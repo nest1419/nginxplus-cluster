@@ -1,0 +1,57 @@
+---
+- name: Eliminar completamente NGINX-core y archivos residuales en Red Hat 9
+  hosts: lb
+  become: yes
+
+  tasks:
+    - name: Eliminar paquetes nginx-core y nginx-filesystem
+      dnf:
+        name:
+          - nginx-core
+          - nginx-filesystem
+        state: absent
+        autoremove: yes
+
+    - name: Eliminar rutas residuales relacionadas con NGINX
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx
+        - /var/cache/nginx
+        - /usr/lib/systemd/system/nginx.service
+        - /usr/lib64/nginx
+        - /usr/share/nginx
+        - /var/lib/nginx
+        - /usr/sbin/nginx
+        - /etc/yum.repos.d/nginx.repo
+        - /etc/ssl/nginx
+
+    - name: Desmontar /var/log/nginx si está montado
+      shell: |
+        mountpoint -q /var/log/nginx && umount -l /var/log/nginx || true
+      ignore_errors: yes
+
+    - name: Eliminar /var/log/nginx si ya no está montado
+      file:
+        path: /var/log/nginx
+        state: absent
+      ignore_errors: yes
+
+    - name: Recargar systemd
+      command: systemctl daemon-reexec
+
+    - name: Validar que NGINX no existe
+      command: nginx -v
+      register: nginx_check
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Mostrar resultado de verificación
+      debug:
+        msg: >
+          {% if nginx_check.rc != 0 %}
+            ✅ NGINX eliminado correctamente.
+          {% else %}
+            ⚠️ Aún se detecta NGINX: {{ nginx_check.stderr }}
+          {% endif %}

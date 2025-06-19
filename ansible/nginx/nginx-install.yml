@@ -1,0 +1,97 @@
+---
+- name: Instalar y configurar NGINX Plus con licencia JWT en Red Hat 9
+  hosts: lb
+  become: yes
+
+  tasks:
+    - name: Instalar dependencias necesarias
+      dnf:
+        name:
+          - curl
+          - gnupg2
+          - ca-certificates
+        state: present
+        update_cache: yes
+
+    - name: Importar clave GPG pública de NGINX
+      rpm_key:
+        key: https://nginx.org/keys/nginx_signing.key
+        state: present
+
+    - name: Crear directorios necesarios
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/ssl/nginx
+        - /etc/nginx
+
+    - name: Copiar archivo nginx-repo.crt
+      copy:
+        src: files/nginx-repo.crt
+        dest: /etc/ssl/nginx/nginx-repo.crt
+        mode: '0600'
+
+    - name: Copiar archivo nginx-repo.key
+      copy:
+        src: files/nginx-repo.key
+        dest: /etc/ssl/nginx/nginx-repo.key
+        mode: '0600'
+
+    - name: Copiar licencia JWT de NGINX Plus
+      copy:
+        src: files/license.jwt
+        dest: /etc/nginx/license.jwt
+        mode: '0600'
+
+    - name: Configurar repositorio de NGINX Plus
+      copy:
+        dest: /etc/yum.repos.d/nginx-plus.repo
+        content: |
+          [nginx-plus]
+          name=NGINX Plus RHEL $releasever - $basearch
+          baseurl=https://pkgs.nginx.com/plus/rhel/9/$basearch/
+          sslverify=1
+          sslclientcert=/etc/ssl/nginx/nginx-repo.crt
+          sslclientkey=/etc/ssl/nginx/nginx-repo.key
+          enabled=1
+
+    - name: Instalar NGINX Plus
+      dnf:
+        name: nginx-plus
+        state: present
+
+    - name: Asegurar archivo nginx.conf básico funcional
+      copy:
+        dest: /etc/nginx/nginx.conf
+        content: |
+          user nginx;
+          worker_processes auto;
+          error_log /var/log/nginx/error.log warn;
+          pid /var/run/nginx.pid;
+
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
+              sendfile        on;
+              keepalive_timeout  65;
+              server {
+                  listen 80 default_server;
+                  location / {
+                      return 200 'NGINX Plus con licencia JWT instalado correctamente\n';
+                  }
+              }
+          }
+        mode: '0644'
+        backup: yes
+
+    - name: Habilitar y arrancar NGINX Plus
+      service:
+        name: nginx
+        state: started
+        enabled: yes

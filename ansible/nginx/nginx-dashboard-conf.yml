@@ -1,0 +1,43 @@
+---
+- name: Configurar dashboard.conf para responder por nombres DNS en IP flotante
+  hosts: lb
+  become: yes
+
+  tasks:
+    - name: Sobrescribir archivo dashboard.conf con los nombres DNS válidos
+      copy:
+        dest: /etc/nginx/conf.d/dashboard.conf
+        content: |
+          server {
+              listen 172.20.53.20:443 ssl default_server;
+              http2 on;
+
+              server_name vanpnginxlb5.sandals.com vanpnginxlb6.sandals.com;
+
+              ssl_certificate     /etc/nginx/ssl/STAR.SANDALS.COM.crt;
+              ssl_certificate_key /etc/nginx/ssl/sandals.com.key;
+
+              ssl_protocols TLSv1.2 TLSv1.3;
+              ssl_ciphers HIGH:!aNULL:!MD5;
+
+              location /api/ {
+                  api write=on;
+                  allow all;
+              }
+
+              location /dashboard.html {
+                  root /usr/share/nginx/html;
+              }
+          }
+
+    - name: Verificar sintaxis de configuración NGINX
+      command: nginx -t
+      register: nginx_test
+      failed_when: nginx_test.rc != 0
+      changed_when: false
+
+    - name: Reiniciar NGINX si la configuración es válida
+      service:
+        name: nginx
+        state: restarted
+      when: nginx_test.rc == 0
