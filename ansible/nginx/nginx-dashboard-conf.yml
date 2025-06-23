@@ -1,27 +1,41 @@
 ---
-- name: Configurar dashboard.conf para responder por nombres DNS en IP flotante
+- name: Configurar dashboard.conf para responder por nombres DNS en IP flotante con redirección HTTP a HTTPS
   hosts: lb
   become: yes
 
   tasks:
-    - name: Sobrescribir archivo dashboard.conf con los nombres DNS válidos
+    - name: Sobrescribir archivo dashboard.conf con los nombres DNS válidos y redirección HTTP→HTTPS
       copy:
         dest: /etc/nginx/conf.d/dashboard.conf
         content: |
           server {
-              listen 172.20.53.20:443 ssl default_server;
+              listen x.x.x.x:80 default_server;
+              server_name ghc.com ghc.com;
+
+              location / {
+                  return 301 https://$host$request_uri;
+              }
+          }
+
+          server {
+              listen x.x.x.x:443 ssl default_server;
               http2 on;
 
-              server_name vanpnginxlb5.sandals.com vanpnginxlb6.sandals.com;
+              server_name ghc.com ghc.com;
 
-              ssl_certificate     /etc/nginx/ssl/STAR.SANDALS.COM.crt;
-              ssl_certificate_key /etc/nginx/ssl/sandals.com.key;
+              ssl_certificate     /etc/nginx/ssl/xxxxxx.COM.crt;
+              ssl_certificate_key /etc/nginx/ssl/xxxxxx.key;
 
               ssl_protocols TLSv1.2 TLSv1.3;
               ssl_ciphers HIGH:!aNULL:!MD5;
 
               location /api/ {
                   api write=on;
+                  allow all;
+              }
+
+              location /status {
+                  api;
                   allow all;
               }
 
@@ -36,8 +50,8 @@
       failed_when: nginx_test.rc != 0
       changed_when: false
 
-    - name: Reiniciar NGINX si la configuración es válida
+    - name: Recargar NGINX si la configuración es válida
       service:
         name: nginx
-        state: restarted
+        state: reloaded
       when: nginx_test.rc == 0
